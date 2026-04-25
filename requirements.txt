@@ -1,0 +1,22 @@
+#######
+# python3 -m pip install --upgrade pip
+# pip3 install -r requirements.txt --no-cache-dir
+##
+# Unified Google GenAI SDK (Modern Standard)
+google-genai>=1.0.0
+langchain-google-genai>=4.2.2
+
+# Core RAG & Vector DB
+langchain>=0.3.0
+langchain-chroma>=0.1.0
+langchain-text-splitters>=0.0.1
+langchain-classic>=0.0.1
+chromadb>=0.5.0
+
+# Document Parsing & UI
+pypdf>=4.0.0
+docx2txt>=0.8
+streamlit>=1.30.0
+pandas>=2.2.0
+##
+#######
