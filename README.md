@@ -1,6 +1,6 @@
 # 🧠 SriLab.AI India, HR Policy - Personal RAG Assistant
 
-Welcome to the Master RAG Control Tower! This is a complete, user-friendly desktop application that allows you to upload your own private documents (PDFs, Word files, Text files) and chat directly with them using Google's powerful Gemini AI.
+Welcome to the Personal RAG Assistant! This is a complete, user-friendly desktop application that allows you to upload your own private documents (PDFs, Word files, Text files) and chat directly with them using Google's powerful Gemini AI.
 
 ---
 
@@ -22,6 +22,204 @@ RAG simply means: **Retrieve** the right document, **Augment** (feed) it to the 
 2. **Chunking:** The system cuts the file into small paragraphs so the AI doesn't get overwhelmed reading a 1,000-page book all at once.
 3. **Embedding:** The system translates these human words into "math vectors" (numbers) so the computer can understand the meaning of the text.
 4. **Retrieval & Chat:** When you ask a question, the system finds the math vectors that best match your question, grabs the text, and gives it to Gemini to read and answer.
+
+---
+
+## 🔍 Part 1.5: Deep Dive — Vector Search & ChromaDB
+
+This section bridges the gap between the high-level RAG concept above and the actual machinery running under the hood. Understanding these two ideas will make every other part of this application click.
+
+---
+
+### 📐 What is a Vector? (The "GPS Coordinates for Meaning" Analogy)
+
+In normal life, we store text as plain letters and words. Computers are very fast at finding exact words (like Ctrl+F in a document), but they have no idea what words *mean*. Searching for "leave policy" won't find a paragraph that says "annual vacation entitlement" even though they mean the same thing.
+
+**Vectors solve this.** A vector is simply a list of numbers — but not random numbers. They are coordinates that represent the *meaning and context* of a piece of text in a multi-dimensional space.
+
+Think of it like GPS coordinates for ideas:
+
+```
+"maternity leave"     → [0.821, -0.134, 0.442, 0.009, ... 768 numbers total]
+"paternity leave"     → [0.798, -0.119, 0.431, 0.021, ... 768 numbers total]
+"pregnancy benefit"   → [0.815, -0.128, 0.438, 0.014, ... 768 numbers total]
+"company stock price" → [0.102,  0.891, -0.33, 0.774, ... 768 numbers total]
+```
+
+Notice how "maternity leave", "paternity leave", and "pregnancy benefit" produce *similar-looking* numbers — their GPS coordinates are close together on the map. "Company stock price" is far away. This is the magic: **semantic similarity becomes physical distance.**
+
+The model that generates these numbers is called an **Embedding Model** (in this app: `text-embedding-004`). It was trained on billions of sentences and learned to assign coordinates such that related ideas cluster together.
+
+---
+
+### 📏 How Does "Similarity" Get Measured? (The Ruler in Vector Space)
+
+Once everything is converted to coordinates, the system needs a ruler to measure how close two vectors are. The most common ruler used is called **Cosine Similarity**.
+
+Imagine two arrows drawn from the centre of a globe — one for your question, one for each document chunk. Cosine similarity measures the **angle** between the arrows:
+
+```
+  Angle = 0°   → Identical meaning  → Score = 1.0  ✅ Perfect match
+  Angle = 45°  → Related meaning    → Score = 0.7  ✅ Good match
+  Angle = 90°  → Unrelated          → Score = 0.0  ❌ No match
+  Angle = 180° → Opposite meaning   → Score = -1.0 ❌ Opposite
+```
+
+When you type a question, it gets converted into its own vector (arrow). ChromaDB then measures the angle between your question-arrow and every stored chunk-arrow, ranks them by smallest angle (closest meaning), and returns the **top 3** (controlled by `k=3` in the code).
+
+This is why the system finds "annual vacation entitlement" when you ask about "leave policy" — their arrows point in nearly the same direction even though the words are different.
+
+---
+
+### 🗄️ What is ChromaDB? (The "Smart Filing Cabinet" Analogy)
+
+ChromaDB is the database where all your document vectors are stored and searched. But calling it just a "database" undersells it. It is specifically a **Vector Database** — built from the ground up to store, organise, and search millions of vectors extremely fast.
+
+Here is how it compares to tools you might already know:
+
+| | Regular Database (e.g. Excel / MySQL) | ChromaDB (Vector Database) |
+|---|---|---|
+| **Stores** | Rows and columns of text/numbers | Text + its vector (meaning coordinates) |
+| **Searches by** | Exact keyword match | Semantic similarity (meaning) |
+| **Query example** | `WHERE policy = 'maternity'` | *"Find chunks most similar to my question"* |
+| **Finds synonyms?** | ❌ No | ✅ Yes |
+| **Lives** | On a server / cloud | Locally on your hard drive (`./chroma_db_store`) |
+| **Speed** | Fast for exact lookups | Fast for approximate nearest-neighbour search |
+
+The key innovation in ChromaDB is something called **ANN — Approximate Nearest Neighbour search**. Instead of comparing your question to every single stored chunk one by one (which gets slow with thousands of documents), ChromaDB builds an internal index structure (similar to how a book's index lets you jump straight to a topic) so it can find the closest vectors almost instantly.
+
+---
+
+### 🏗️ ChromaDB's Internal Structure — What Actually Gets Saved
+
+When you click "Update Knowledge Base", ChromaDB does not just dump text into a folder. For every chunk of your document, it creates and saves **four things together** as one record:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  CHROMADB RECORD (one per chunk)                                 │
+│                                                                  │
+│  1. ID          → "chunk_0042"  (unique identifier)             │
+│                                                                  │
+│  2. Document    → "Female employees are entitled to 26 weeks    │
+│                    of paid maternity leave for the first two     │
+│                    children..."  (the raw text)                  │
+│                                                                  │
+│  3. Embedding   → [0.821, -0.134, 0.442, 0.009, ... x768]      │
+│                    (the vector — meaning coordinates)            │
+│                                                                  │
+│  4. Metadata    → { "source": "HR_Policy.txt", "page": 2 }     │
+│                    (where the chunk came from)                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+When you ask a question, ChromaDB uses only the **Embedding** column to find the closest matches, then hands back the **Document** (raw text) to Gemini to read and answer from.
+
+---
+
+### 🔄 The Full Vector Search Lifecycle — Step by Step
+
+Here is the complete journey from a user's typed question to a retrieved answer chunk:
+
+```
+YOUR QUESTION:
+"How many weeks of maternity leave do I get?"
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  STEP 1: Embed the Question         │
+│  text-embedding-004 converts it to: │
+│  [0.819, -0.131, 0.440, ...]        │
+└──────────────────┬──────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────┐
+│  STEP 2: Enter ChromaDB             │
+│  Compare question vector against    │
+│  ALL stored chunk vectors using     │
+│  Cosine Similarity                  │
+└──────────────────┬──────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────┐
+│  STEP 3: Rank Results by Similarity Score               │
+│                                                         │
+│  Rank 1 → Score 0.94 → "...26 weeks paid maternity..." │
+│  Rank 2 → Score 0.87 → "...Maternity Benefit Act..."   │
+│  Rank 3 → Score 0.81 → "...crèche facility access..."  │
+│  Rank 4 → Score 0.43 → "...working hours 9AM-6PM..."   │
+│  Rank 5 → Score 0.21 → "...gratuity after 5 years..."  │
+└──────────────────┬──────────────────────────────────────┘
+                   │  (Only top k=3 are selected)
+                   ▼
+┌─────────────────────────────────────┐
+│  STEP 4: Return Raw Text of Top 3   │
+│  These 3 chunks are handed to       │
+│  Gemini as "Context" to read from   │
+└─────────────────────────────────────┘
+```
+
+---
+
+### 💾 Where Does ChromaDB Live on Your Computer?
+
+Unlike cloud databases (which need a server, login, and internet), ChromaDB in this app runs **100% locally** on your machine. After you upload your first document, a folder called `chroma_db_store` is automatically created in your project directory:
+
+```
+your-project-folder/
+├── ragv2.py
+├── requirements.txt
+├── SriLab_AI_HR_Policies-v3.txt
+└── chroma_db_store/           ← ChromaDB lives here
+    ├── chroma.sqlite3         ← The main index & metadata
+    └── [uuid-folder]/
+        ├── data_level0.bin    ← The raw vector embeddings
+        ├── header.bin
+        ├── length.bin
+        └── link_lists.bin
+```
+
+The `chroma.sqlite3` file is the master directory — it holds all the text, metadata, and IDs. The `.bin` files inside the UUID folder are the actual raw vector numbers stored in a compressed binary format for fast searching. **Do not delete or rename these files** — ChromaDB needs all of them together to function.
+
+> 💡 **Tip:** If you ever want to start fresh with a completely empty knowledge base, simply delete the entire `chroma_db_store/` folder and restart the app. A new one will be created automatically on the next upload.
+
+---
+
+### ⚙️ Tuning Vector Search Quality — The Chunk Size vs. Overlap Trade-off
+
+The quality of your vector search depends heavily on how you split your documents. Here is an intuitive guide to the two sidebar controls:
+
+#### Chunk Size (default: 1,000 characters)
+
+Think of this as the **page size of your filing system**.
+
+- **Too small (e.g. 100 chars):** Each chunk is one sentence. Vectors are very precise but miss broader context. Like reading one line of a contract at a time — you understand each sentence but lose the paragraph's intent.
+- **Too large (e.g. 4,000 chars):** Each chunk is several paragraphs. The vector becomes an averaged blur of many ideas, making it harder to pinpoint the exact answer. Like summarising an entire chapter in one sticky note.
+- **Sweet spot (800–1,200):** Each chunk covers one complete idea or policy clause. The vector cleanly represents that single concept. ✅
+
+#### Chunk Overlap (default: 200 characters)
+
+Think of this as the **margin of your page** — a small repeated border between pages so nothing gets cut off at the edge.
+
+```
+WITHOUT OVERLAP:
+  Chunk A: "...Female employees are entitled to 26 weeks of paid maternity leave [END]"
+  Chunk B: "[START] for the first two children and 12 weeks for subsequent..."
+
+  → If the key phrase spans both chunks, neither chunk alone gives the full answer.
+
+WITH 200-char OVERLAP:
+  Chunk A: "...Female employees are entitled to 26 weeks of paid maternity leave"
+  Chunk B: "...26 weeks of paid maternity leave for the first two children and 12 weeks..."
+
+  → The crucial phrase appears in full in at least one chunk. ✅
+```
+
+| Setting | Chunk Size | Overlap | Best For |
+|---|---|---|---|
+| Dense legal/HR docs | 800 | 200 | Policy manuals, contracts |
+| Technical documentation | 1,000 | 150 | API docs, manuals |
+| Books / long prose | 1,500 | 300 | Novels, research papers |
+| Short FAQ sheets | 400 | 100 | FAQs, quick-reference cards |
 
 ---
 
