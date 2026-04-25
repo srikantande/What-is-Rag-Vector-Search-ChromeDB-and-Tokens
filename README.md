@@ -1,4 +1,4 @@
-# 🏗️ Master RAG Control Tower
+# 🧠 SriLab.AI India, HR Policy - Personal RAG Assistant
 
 Welcome to the Master RAG Control Tower! This is a complete, user-friendly desktop application that allows you to upload your own private documents (PDFs, Word files, Text files) and chat directly with them using Google's powerful Gemini AI.
 
