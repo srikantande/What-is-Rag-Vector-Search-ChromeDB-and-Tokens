@@ -549,3 +549,11 @@ Who is the CTO of SriLab.AI?
 | Out-of-scope / Hallucination trap | 300 – 500 | 20 – 60 |
 
 > These are estimates based on `k=3` chunks retrieved and default chunk size of 1,000. Your actual numbers will vary slightly based on sidebar settings.
+
+## Application Runtime screenshots
+####
+### <img width="476" height="578" alt="1" src="https://github.com/user-attachments/assets/2ac30d8a-8b47-44b6-a48d-b7890280efec" />
+####
+### <img width="470" height="742" alt="2" src="https://github.com/user-attachments/assets/8620a20e-0e23-443f-9771-9b96bf972a6d" />
+####
+### <img width="1182" height="863" alt="3" src="https://github.com/user-attachments/assets/6b8c6f87-19f3-4e53-8d1a-fe3c147c8c20" />
